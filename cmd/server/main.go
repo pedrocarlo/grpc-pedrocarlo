@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"grpc-pedrocarlo/pkg/db"
 	filesync "grpc-pedrocarlo/pkg/file"
 	"log"
 	"net"
@@ -23,6 +24,8 @@ func main() {
 	filesync.RegisterFileSyncServer(grpcServer, server)
 	log.Printf("Starting server on address %s", ln.Addr().String())
 
+	db.Test()
+
 	if err := grpcServer.Serve(ln); err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -35,7 +38,7 @@ type FileSyncServer struct {
 }
 
 func getFile(request *filesync.FileMetadata) (*os.File, error) {
-	baseDir := "./files"
+	baseDir := ".server_files/files"
 	idStr := strconv.Itoa(int(request.Id))
 	path := filepath.Join(baseDir, idStr, request.Filehash, request.Filename)
 	return os.Open(path)
