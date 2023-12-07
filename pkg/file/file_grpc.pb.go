@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type FileSyncClient interface {
 	FileList(ctx context.Context, in *FileListRequest, opts ...grpc.CallOption) (*FileListResponse, error)
 	FileDownload(ctx context.Context, in *FileMetadata, opts ...grpc.CallOption) (FileSync_FileDownloadClient, error)
+	FileUpload(ctx context.Context, opts ...grpc.CallOption) (FileSync_FileUploadClient, error)
 }
 
 type fileSyncClient struct {
@@ -59,7 +60,7 @@ func (c *fileSyncClient) FileDownload(ctx context.Context, in *FileMetadata, opt
 }
 
 type FileSync_FileDownloadClient interface {
-	Recv() (*FileResponse, error)
+	Recv() (*FileBytesMessage, error)
 	grpc.ClientStream
 }
 
@@ -67,8 +68,42 @@ type fileSyncFileDownloadClient struct {
 	grpc.ClientStream
 }
 
-func (x *fileSyncFileDownloadClient) Recv() (*FileResponse, error) {
-	m := new(FileResponse)
+func (x *fileSyncFileDownloadClient) Recv() (*FileBytesMessage, error) {
+	m := new(FileBytesMessage)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *fileSyncClient) FileUpload(ctx context.Context, opts ...grpc.CallOption) (FileSync_FileUploadClient, error) {
+	stream, err := c.cc.NewStream(ctx, &FileSync_ServiceDesc.Streams[1], "/file.FileSync/FileUpload", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &fileSyncFileUploadClient{stream}
+	return x, nil
+}
+
+type FileSync_FileUploadClient interface {
+	Send(*FileBytesMessage) error
+	CloseAndRecv() (*FileMetadata, error)
+	grpc.ClientStream
+}
+
+type fileSyncFileUploadClient struct {
+	grpc.ClientStream
+}
+
+func (x *fileSyncFileUploadClient) Send(m *FileBytesMessage) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *fileSyncFileUploadClient) CloseAndRecv() (*FileMetadata, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(FileMetadata)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -81,6 +116,7 @@ func (x *fileSyncFileDownloadClient) Recv() (*FileResponse, error) {
 type FileSyncServer interface {
 	FileList(context.Context, *FileListRequest) (*FileListResponse, error)
 	FileDownload(*FileMetadata, FileSync_FileDownloadServer) error
+	FileUpload(FileSync_FileUploadServer) error
 	mustEmbedUnimplementedFileSyncServer()
 }
 
@@ -93,6 +129,9 @@ func (UnimplementedFileSyncServer) FileList(context.Context, *FileListRequest) (
 }
 func (UnimplementedFileSyncServer) FileDownload(*FileMetadata, FileSync_FileDownloadServer) error {
 	return status.Errorf(codes.Unimplemented, "method FileDownload not implemented")
+}
+func (UnimplementedFileSyncServer) FileUpload(FileSync_FileUploadServer) error {
+	return status.Errorf(codes.Unimplemented, "method FileUpload not implemented")
 }
 func (UnimplementedFileSyncServer) mustEmbedUnimplementedFileSyncServer() {}
 
@@ -134,7 +173,7 @@ func _FileSync_FileDownload_Handler(srv interface{}, stream grpc.ServerStream) e
 }
 
 type FileSync_FileDownloadServer interface {
-	Send(*FileResponse) error
+	Send(*FileBytesMessage) error
 	grpc.ServerStream
 }
 
@@ -142,8 +181,34 @@ type fileSyncFileDownloadServer struct {
 	grpc.ServerStream
 }
 
-func (x *fileSyncFileDownloadServer) Send(m *FileResponse) error {
+func (x *fileSyncFileDownloadServer) Send(m *FileBytesMessage) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func _FileSync_FileUpload_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(FileSyncServer).FileUpload(&fileSyncFileUploadServer{stream})
+}
+
+type FileSync_FileUploadServer interface {
+	SendAndClose(*FileMetadata) error
+	Recv() (*FileBytesMessage, error)
+	grpc.ServerStream
+}
+
+type fileSyncFileUploadServer struct {
+	grpc.ServerStream
+}
+
+func (x *fileSyncFileUploadServer) SendAndClose(m *FileMetadata) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *fileSyncFileUploadServer) Recv() (*FileBytesMessage, error) {
+	m := new(FileBytesMessage)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // FileSync_ServiceDesc is the grpc.ServiceDesc for FileSync service.
@@ -163,6 +228,11 @@ var FileSync_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "FileDownload",
 			Handler:       _FileSync_FileDownload_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "FileUpload",
+			Handler:       _FileSync_FileUpload_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "pkg/file/file.proto",

@@ -3,27 +3,33 @@ package file;
 
 option go_package = "./filesync";
 
-message FileListRequest {}
+message FileListRequest { string folder = 1; }
 
 message FileMetadata {
   int32 id = 1; // First id
-  string filename = 2;
-  string filehash = 3; // Second id
-  // Maybe some date here
+  string folder = 2;
+  string filename = 3;
+  string filehash = 4; // Second id
+  int32 timestamp = 5;
 }
 
-message FileListMetadata { repeated FileMetadata list = 1; }
+message FileBytesMessage {
+  string folder = 1;
+  string filename = 2;
+  string filehash = 3;
+  FileResponse response = 4;
+}
 
-message FileListResponse { map<int32, FileListMetadata> files = 1; }
+message FileListResponse { repeated FileMetadata files = 1; }
 
 // See how to have timeouts for rpc
 message FileResponse {
-  FileMetadata meta = 1;
   bytes chunk = 2; // Chunk size max of 1 Mb
   bool done = 3;
 }
 
 service FileSync {
   rpc FileList(FileListRequest) returns (FileListResponse) {}
-  rpc FileDownload(FileMetadata) returns (stream FileResponse) {}
+  rpc FileDownload(FileMetadata) returns (stream FileBytesMessage) {}
+  rpc FileUpload(stream FileBytesMessage) returns (FileMetadata) {}
 }
