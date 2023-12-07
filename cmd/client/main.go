@@ -9,6 +9,7 @@ import (
 	filesync "grpc-pedrocarlo/pkg/file"
 	"grpc-pedrocarlo/pkg/utils"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,7 +30,6 @@ func main() {
 	file, err := os.Open("./test.txt")
 	if err != nil {
 		utils.Log_fatal_trace(err)
-
 	}
 	utils.Log_trace(fmt.Sprintf("Uploading file %s", file.Name()))
 	err = file_client.uploadFile(file, "")
@@ -96,9 +96,9 @@ func (c *FileClient) downloadFile(dir string, file_meta *filesync.FileMetadata) 
 	file, err := os.CreateTemp(TEMP_DIR, "*")
 	path := file.Name()
 	utils.Log_trace(fmt.Sprintf("Created temp file: %s", path))
+	defer file.Close()
+	defer os.Remove(path)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return nil, err
 
 	}
@@ -110,21 +110,15 @@ func (c *FileClient) downloadFile(dir string, file_meta *filesync.FileMetadata) 
 		if stream == nil {
 			stream, err = c.client.FileDownload(context.Background(), file_meta)
 			if err != nil {
-				file.Close()
-				os.Remove(path)
 				return nil, err
 			}
 		}
 		res, err = stream.Recv()
 		if err != nil {
-			file.Close()
-			os.Remove(path)
 			return nil, err
 		}
 		_, err = file.Write(res.Response.Chunk)
 		if err != nil {
-			file.Close()
-			os.Remove(path)
 			return nil, err
 		}
 		done = res.Response.Done
@@ -135,19 +129,13 @@ func (c *FileClient) downloadFile(dir string, file_meta *filesync.FileMetadata) 
 	file.Seek(0, io.SeekStart)
 	io.Copy(hasher, file)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return nil, err
 	}
 	if res.Filehash != hex.EncodeToString(hasher.Sum(nil)) {
-		file.Close()
-		os.Remove(path)
 		return nil, errHashDifferent
 	}
 	err = os.Rename(path, new_path)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return nil, err
 	}
 	utils.Log_trace(fmt.Sprintf("Finished download of file %s", file_meta.Filename))
@@ -156,15 +144,34 @@ func (c *FileClient) downloadFile(dir string, file_meta *filesync.FileMetadata) 
 }
 
 func (c *FileClient) uploadFile(file *os.File, folder string) error {
-	// file, err := db.GetFile(fileSyncFileMetadataToDbFileMetadata(request))
-	// if err != nil {
-	// 	return err
-	// }
 	hasher := sha256.New()
-	io.Copy(hasher, file)
+	_, err := io.Copy(hasher, file)
+	if err != nil {
+		return err
+	}
 	hash := hex.EncodeToString(hasher.Sum(nil))
 	filename := filepath.Base(file.Name())
-	file.Seek(0, io.SeekStart)
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	temp_file, err := os.CreateTemp(TEMP_DIR, "*")
+	path := temp_file.Name()
+	utils.Log_trace(fmt.Sprintf("Created temp file: %s", path))
+	defer temp_file.Close()
+	defer os.Remove(path)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(temp_file, file)
+	if err != nil {
+		return err
+	}
+	_, err = temp_file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
 
 	bytesRead := 0
 	mb := 1000000
@@ -175,7 +182,7 @@ func (c *FileClient) uploadFile(file *os.File, folder string) error {
 		return err
 	}
 	for !done {
-		n, err := file.Read(buf)
+		n, err := temp_file.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				done = true
@@ -194,8 +201,15 @@ func (c *FileClient) uploadFile(file *os.File, folder string) error {
 			Response: &filesync.FileResponse{Chunk: buf[:n], Done: done},
 		})
 		if err != nil {
+			stream.CloseSend()
 			return err
 		}
+	}
+	m := &filesync.FileBytesMessage{}
+	err = stream.RecvMsg(m)
+	log.Println(m)
+	if err != io.EOF {
+		return err
 	}
 	return nil
 }

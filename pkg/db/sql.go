@@ -70,16 +70,17 @@ func ConnectDb() (*sqlx.DB, error) {
 	return sqlx.Connect("sqlite3", DB_DIR)
 }
 
+// Insert or replace creates a new file id for row
 // Does not commit transaction
 func InsertFile(tx *sqlx.Tx, file_meta *FileMetadata) error {
-	_, err := tx.NamedExec("INSERT INTO files_metadata (folder, file_name, file_hash, timestamp) VALUES (:folder, :file_name, :file_hash, :timestamp)", file_meta)
+	_, err := tx.NamedExec("INSERT OR REPLACE INTO files_metadata (folder, file_name, file_hash, timestamp) VALUES (:folder, :file_name, :file_hash, :timestamp)", file_meta)
 	return err
 }
 
 func InsertFolder(tx *sqlx.Tx, curr_dir string, new_dir_name string) error {
 	folder := filepath.Join(curr_dir, new_dir_name)
 	t := int(time.Now().Unix())
-	_, err := tx.Exec("INSERT INTO files_metadata (folder, timestamp) VALUES ($1, $2)", &folder, &t)
+	_, err := tx.Exec("INSERT OR REPLACE INTO files_metadata (folder, timestamp) VALUES ($1, $2)", &folder, &t)
 	return err
 }
 

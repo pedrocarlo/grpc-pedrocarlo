@@ -13,7 +13,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -59,13 +58,6 @@ type FileSyncServer struct {
 	db_conn *sqlx.DB
 }
 
-func getFile(request *filesync.FileMetadata) (*os.File, error) {
-	baseDir := ".server_files/files"
-	idStr := strconv.Itoa(int(request.Id))
-	path := filepath.Join(baseDir, idStr, request.Filehash, request.Filename)
-	return os.Open(path)
-}
-
 func fileSyncFileMetadataToDbFileMetadata(request *filesync.FileMetadata) *db.FileMetadata {
 	return &db.FileMetadata{
 		Id:        int(request.Id),
@@ -89,20 +81,37 @@ func dbFileMetadataToFilesyncFileMetadata(query *db.FileMetadata) *filesync.File
 // FileDownload implements filesync.FileSyncServer.
 func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream filesync.FileSync_FileDownloadServer) error {
 	utils.Log_trace("Received File Download request")
-	// TODO use SQLITE to track file locations to get themd
 	dbFileMeta := fileSyncFileMetadataToDbFileMetadata(request)
 	utils.Log_trace(fmt.Sprintf("DB File meta: %+v", dbFileMeta))
 	file, err := db.GetFile(dbFileMeta)
 	if err != nil {
 		return err
 	}
+
+	temp_file, err := os.CreateTemp(db.TEMP_DIR, "*")
+	path := temp_file.Name()
+	utils.Log_trace(fmt.Sprintf("Created temp file: %s", path))
+	defer temp_file.Close()
+	defer os.Remove(path)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(temp_file, file)
+	if err != nil {
+		return err
+	}
+	_, err = temp_file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
 	bytesRead := 0
 	mb := 1000000
 	buf := make([]byte, mb)
 	var done bool = false
 	utils.Log_trace("Starting File Download request")
 	for !done {
-		n, err := file.Read(buf)
+		n, err := temp_file.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				done = true
@@ -121,6 +130,7 @@ func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream fil
 			Response: &filesync.FileResponse{Chunk: buf[:n], Done: done},
 		})
 	}
+	utils.Log_trace("Finished File Download request")
 	return nil
 }
 
@@ -140,13 +150,6 @@ func (s *FileSyncServer) FileList(ctx context.Context, request *filesync.FileLis
 		res := dbFileMetadataToFilesyncFileMetadata(&file)
 		tmp = append(tmp, res)
 	}
-	// tmp[1] = new(filesync.FileMetadata)
-	// tmp[1].List = make([]*filesync.FileMetadata, 0)
-	// tmp[1].List = append(tmp[1].List, &filesync.FileMetadata{
-	// 	Id:       1,
-	// 	Filename: "test.txt",
-	// 	Filehash: "ef417326f45e61f31ec764c2052f442b9490321a8d0886b8f92050a3ee8ec7dc",
-	// })
 	return &filesync.FileListResponse{Files: tmp}, nil
 }
 
@@ -156,9 +159,9 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	file, err := os.CreateTemp(db.TEMP_DIR, "*")
 	path := file.Name()
 	utils.Log_trace(fmt.Sprintf("Created temp file: %s", path))
+	defer file.Close()
+	defer os.Remove(path)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return err
 	}
 	var done bool = false
@@ -167,21 +170,15 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	for !done {
 		res, err = stream.Recv()
 		if err != nil {
-			file.Close()
-			os.Remove(path)
 			return err
 		}
 		// Check if folder exists
 		_, err := db.QueryFolder(s.db_conn, res.Folder)
 		if err != nil {
-			file.Close()
-			os.Remove(path)
 			return err
 		}
 		_, err = file.Write(res.Response.Chunk)
 		if err != nil {
-			file.Close()
-			os.Remove(path)
 			return err
 		}
 		done = res.Response.Done
@@ -192,24 +189,20 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	file.Seek(0, io.SeekStart)
 	io.Copy(hasher, file)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return err
 	}
 	utils.Log_trace("Computing Hash")
 	hash := hex.EncodeToString(hasher.Sum(nil))
 	if res.Filehash != hash {
-		file.Close()
-		os.Remove(path)
 		return errHashDifferent
 	}
 	file.Close()
+	utils.Log_trace("Beginning Db Transaction")
 	tx, err := s.db_conn.Beginx()
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return err
 	}
+	utils.Log_trace("Inserting File to Db")
 	err = db.InsertFile(tx, &db.FileMetadata{
 		Folder:    res.Folder,
 		Filename:  res.Filename,
@@ -217,22 +210,16 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 		Timestamp: int(time.Now().Unix()),
 	})
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return err
 	}
+	utils.Log_trace("Commiting changes to Db")
 	err = tx.Commit()
 	if err != nil {
-		file.Close()
-		os.Remove(path)
-		utils.Log_fatal_trace(err)
 		return err
 	}
 	utils.Log_trace(fmt.Sprintf("Moving %s to %s", path, new_path))
 	err = os.Rename(path, new_path)
 	if err != nil {
-		file.Close()
-		os.Remove(path)
 		return err
 	}
 	utils.Log_trace(fmt.Sprintf("Finished download of file %s", res.Filename))
