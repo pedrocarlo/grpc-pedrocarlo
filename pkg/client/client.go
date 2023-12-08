@@ -21,11 +21,14 @@ import (
 const CLIENT_BASE_DIR = "client_files"
 
 var TEMP_DIR = filepath.Join(CLIENT_BASE_DIR, "tmp")
+var DOWNLOADS_DIR = filepath.Join(CLIENT_BASE_DIR, "downloads")
 var errHashDifferent = errors.New("files hashes are not the same")
 
 type FileClient struct {
-	client filesync.FileSyncClient
-	conn   *grpc.ClientConn
+	client         filesync.FileSyncClient
+	conn           *grpc.ClientConn
+	Curr_dir       string
+	Curr_dir_files map[string]*filesync.FileMetadata
 }
 
 func Connect() (*grpc.ClientConn, error) {
@@ -38,10 +41,20 @@ func CreateClient() (*FileClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FileClient{
-		client: filesync.NewFileSyncClient(conn),
-		conn:   conn,
-	}, nil
+	c := &FileClient{
+		client:   filesync.NewFileSyncClient(conn),
+		conn:     conn,
+		Curr_dir: "",
+	}
+	files, err := c.GetFileList(c.Curr_dir)
+	if err != nil {
+		return nil, err
+	}
+	c.Curr_dir_files = make(map[string]*filesync.FileMetadata)
+	for _, file := range files {
+		c.Curr_dir_files[file.Filename] = file
+	}
+	return c, nil
 }
 
 func (c *FileClient) CloseClient() {
@@ -60,15 +73,18 @@ func (c *FileClient) GetFileList(folder string) ([]*filesync.FileMetadata, error
 	return m.Files, nil
 }
 
-func (c *FileClient) DownloadFile(dir string, file_meta *filesync.FileMetadata) (*os.File, error) {
+func (c *FileClient) DownloadFile(file_meta *filesync.FileMetadata) error {
 	// Create a temp File with current timestamp as filename
+	if file_meta == nil {
+		return errors.New("nil file_meta")
+	}
 	file, err := os.CreateTemp(TEMP_DIR, "*")
 	path := file.Name()
 	utils.Log_trace(fmt.Sprintf("Created temp file: %s", path))
 	defer file.Close()
 	defer os.Remove(path)
 	if err != nil {
-		return nil, err
+		return err
 
 	}
 	var done bool = false
@@ -79,40 +95,42 @@ func (c *FileClient) DownloadFile(dir string, file_meta *filesync.FileMetadata) 
 		if stream == nil {
 			stream, err = c.client.FileDownload(context.Background(), file_meta)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 		res, err = stream.Recv()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		_, err = file.Write(res.Response.Chunk)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		done = res.Response.Done
 	}
-	new_path := filepath.Join(dir, res.Filename)
+	new_path := filepath.Join(DOWNLOADS_DIR, res.Filename)
 	// Check hash of file
 	hasher := sha256.New()
 	file.Seek(0, io.SeekStart)
 	io.Copy(hasher, file)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if res.Filehash != hex.EncodeToString(hasher.Sum(nil)) {
-		return nil, errHashDifferent
+		return errHashDifferent
 	}
 	err = os.Rename(path, new_path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	utils.Log_trace(fmt.Sprintf("Finished download of file %s", file_meta.Filename))
-	file.Close()
-	return file, nil
+	return nil
 }
 
 func (c *FileClient) UploadFile(file *os.File, folder string) error {
+	if file == nil {
+		return errors.New("nil file")
+	}
 	hasher := sha256.New()
 	_, err := io.Copy(hasher, file)
 	if err != nil {

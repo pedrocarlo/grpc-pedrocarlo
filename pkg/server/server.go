@@ -50,6 +50,9 @@ func DbFileMetadataToFilesyncFileMetadata(query *db.FileMetadata) *filesync.File
 // FileDownload implements filesync.FileSyncServer.
 func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream filesync.FileSync_FileDownloadServer) error {
 	utils.Log_trace("Received File Download request")
+	if request == nil {
+		return errors.New("nil file_meta")
+	}
 	dbFileMeta := FileSyncFileMetadataToDbFileMetadata(request)
 	utils.Log_trace(fmt.Sprintf("DB File meta: %+v", dbFileMeta))
 	file, err := db.GetFile(dbFileMeta)
