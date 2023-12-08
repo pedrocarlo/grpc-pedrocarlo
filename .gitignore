@@ -1,0 +1,4 @@
+client_files/*
+server_files/files.db
+server_files/files
+server_files/tmp

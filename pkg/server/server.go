@@ -53,6 +53,7 @@ func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream fil
 	if request == nil {
 		return errors.New("nil file_meta")
 	}
+	request.Folder = translateFolder(request.Folder)
 	dbFileMeta := FileSyncFileMetadataToDbFileMetadata(request)
 	utils.Log_trace(fmt.Sprintf("DB File meta: %+v", dbFileMeta))
 	file, err := db.GetFile(dbFileMeta)
@@ -106,10 +107,20 @@ func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream fil
 	return nil
 }
 
+func translateFolder(folder_path string) string {
+	split_path := filepath.SplitList(filepath.Join(folder_path, ""))
+	res := filepath.Join(split_path...)
+	if res == "." {
+		res = "/"
+	}
+	return res
+}
+
 // FileList implements filesync.FileSyncServer.
 func (s *FileSyncServer) FileList(ctx context.Context, request *filesync.FileListRequest) (*filesync.FileListResponse, error) {
 	utils.Log_trace("Received File List request")
 	tmp := make([]*filesync.FileMetadata, 0)
+	request.Folder = translateFolder(request.Folder)
 	_, err := db.QueryFolder(s.Db_conn, request.Folder)
 	if err != nil {
 		return nil, err
@@ -144,6 +155,7 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 		if err != nil {
 			return err
 		}
+		res.Folder = translateFolder(res.Folder)
 		// Check if folder exists
 		_, err := db.QueryFolder(s.Db_conn, res.Folder)
 		if err != nil {
@@ -188,6 +200,20 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	err = tx.Commit()
 	if err != nil {
 		return err
+	}
+	err = os.MkdirAll(res.Folder, os.ModeDir)
+	if err != nil {
+		return err
+	}
+	// Insert folders into database
+	folders := filepath.SplitList(res.Folder)
+	curr_folder := ""
+	for _, fold := range folders {
+		err = db.InsertFolder(tx, curr_folder)
+		if err != nil {
+			return err
+		}
+		curr_folder = filepath.Join(curr_folder, fold)
 	}
 	utils.Log_trace(fmt.Sprintf("Moving %s to %s", path, new_path))
 	err = os.Rename(path, new_path)

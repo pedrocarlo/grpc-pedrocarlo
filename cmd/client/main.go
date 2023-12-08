@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"grpc-pedrocarlo/pkg/client"
 	"grpc-pedrocarlo/pkg/repl"
 	"grpc-pedrocarlo/pkg/utils"
@@ -30,15 +29,15 @@ func main() {
 	// 	utils.Log_fatal_trace(err)
 	// }
 	// time.Sleep(time.Second)
-	utils.Log_trace("Requesting files from folder:", "")
-	lst, err := file_client.GetFileList("")
-	if err != nil {
-		utils.Log_fatal_trace(err)
-	}
-	for k, v2 := range lst {
-		fmt.Printf("Id: %d, Name: %s, Hash: %s", k, v2.Filename, v2.Filehash)
-	}
-	repl.Repl()
+	// utils.Log_trace("Requesting files from folder:", "")
+	// lst, err := file_client.GetFileList("")
+	// if err != nil {
+	// 	utils.Log_fatal_trace(err)
+	// }
+	// for k, v2 := range lst {
+	// 	fmt.Printf("Id: %d, Name: %s, Hash: %s", k, v2.Filename, v2.Filehash)
+	// }
+	repl.Repl(file_client)
 	// test := lst[0]
 	// utils.Log_trace("Starting test download")
 	// _, err = file_client.DownloadFile("./test", test)

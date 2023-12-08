@@ -44,7 +44,7 @@ func CreateClient() (*FileClient, error) {
 	c := &FileClient{
 		client:   filesync.NewFileSyncClient(conn),
 		conn:     conn,
-		Curr_dir: "",
+		Curr_dir: "/",
 	}
 	files, err := c.GetFileList(c.Curr_dir)
 	if err != nil {
