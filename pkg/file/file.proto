@@ -28,8 +28,11 @@ message FileResponse {
   bool done = 3;
 }
 
+message MkdirRequest { string folder = 1; }
+
 service FileSync {
   rpc FileList(FileListRequest) returns (FileListResponse) {}
   rpc FileDownload(FileMetadata) returns (stream FileBytesMessage) {}
   rpc FileUpload(stream FileBytesMessage) returns (FileMetadata) {}
+  rpc MkDir(MkdirRequest) returns (FileMetadata) {}
 }

@@ -118,6 +118,11 @@ func initializeCommands() *CommandMap {
 		name: "ls",
 		desc: "List Files from remote folder",
 	}
+	commands["mkdir"] = Command{
+		f:    Mkdir,
+		name: "mkdir",
+		desc: "Make remote directory",
+	}
 	return commandMap
 }
 
@@ -228,4 +233,17 @@ func ListFiles(c *client.FileClient, args []string) {
 		}
 	}
 	fmt.Printf("%s\n", out_str)
+}
+
+func Mkdir(c *client.FileClient, args []string) {
+	if len(args) < 1 {
+		fmt.Println("usage: mdkir <remote_folder>")
+		return
+	}
+	folder := translateFolderClient(c, args[0])
+	_, err := c.Mkdir(folder)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }

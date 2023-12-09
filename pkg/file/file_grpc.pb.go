@@ -25,6 +25,7 @@ type FileSyncClient interface {
 	FileList(ctx context.Context, in *FileListRequest, opts ...grpc.CallOption) (*FileListResponse, error)
 	FileDownload(ctx context.Context, in *FileMetadata, opts ...grpc.CallOption) (FileSync_FileDownloadClient, error)
 	FileUpload(ctx context.Context, opts ...grpc.CallOption) (FileSync_FileUploadClient, error)
+	MkDir(ctx context.Context, in *MkdirRequest, opts ...grpc.CallOption) (*FileMetadata, error)
 }
 
 type fileSyncClient struct {
@@ -110,6 +111,15 @@ func (x *fileSyncFileUploadClient) CloseAndRecv() (*FileMetadata, error) {
 	return m, nil
 }
 
+func (c *fileSyncClient) MkDir(ctx context.Context, in *MkdirRequest, opts ...grpc.CallOption) (*FileMetadata, error) {
+	out := new(FileMetadata)
+	err := c.cc.Invoke(ctx, "/file.FileSync/MkDir", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FileSyncServer is the server API for FileSync service.
 // All implementations must embed UnimplementedFileSyncServer
 // for forward compatibility
@@ -117,6 +127,7 @@ type FileSyncServer interface {
 	FileList(context.Context, *FileListRequest) (*FileListResponse, error)
 	FileDownload(*FileMetadata, FileSync_FileDownloadServer) error
 	FileUpload(FileSync_FileUploadServer) error
+	MkDir(context.Context, *MkdirRequest) (*FileMetadata, error)
 	mustEmbedUnimplementedFileSyncServer()
 }
 
@@ -132,6 +143,9 @@ func (UnimplementedFileSyncServer) FileDownload(*FileMetadata, FileSync_FileDown
 }
 func (UnimplementedFileSyncServer) FileUpload(FileSync_FileUploadServer) error {
 	return status.Errorf(codes.Unimplemented, "method FileUpload not implemented")
+}
+func (UnimplementedFileSyncServer) MkDir(context.Context, *MkdirRequest) (*FileMetadata, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MkDir not implemented")
 }
 func (UnimplementedFileSyncServer) mustEmbedUnimplementedFileSyncServer() {}
 
@@ -211,6 +225,24 @@ func (x *fileSyncFileUploadServer) Recv() (*FileBytesMessage, error) {
 	return m, nil
 }
 
+func _FileSync_MkDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MkdirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileSyncServer).MkDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/file.FileSync/MkDir",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileSyncServer).MkDir(ctx, req.(*MkdirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FileSync_ServiceDesc is the grpc.ServiceDesc for FileSync service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -221,6 +253,10 @@ var FileSync_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FileList",
 			Handler:    _FileSync_FileList_Handler,
+		},
+		{
+			MethodName: "MkDir",
+			Handler:    _FileSync_MkDir_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -201,20 +201,20 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	if err != nil {
 		return err
 	}
-	err = os.MkdirAll(res.Folder, os.ModeDir)
-	if err != nil {
-		return err
-	}
-	// Insert folders into database
-	folders := filepath.SplitList(res.Folder)
-	curr_folder := ""
-	for _, fold := range folders {
-		err = db.InsertFolder(tx, curr_folder)
-		if err != nil {
-			return err
-		}
-		curr_folder = filepath.Join(curr_folder, fold)
-	}
+	// err = os.MkdirAll(res.Folder, os.ModeDir)
+	// if err != nil {
+	// 	return err
+	// }
+	// // Insert folders into database
+	// folders := filepath.SplitList(res.Folder)
+	// curr_folder := ""
+	// for _, fold := range folders {
+	// 	err = db.InsertFolder(tx, curr_folder)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	curr_folder = filepath.Join(curr_folder, fold)
+	// }
 	utils.Log_trace(fmt.Sprintf("Moving %s to %s", path, new_path))
 	err = os.Rename(path, new_path)
 	if err != nil {
@@ -222,4 +222,30 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	}
 	utils.Log_trace(fmt.Sprintf("Finished download of file %s", res.Filename))
 	return nil
+}
+
+func (s *FileSyncServer) MkDir(ctx context.Context, dir_meta *filesync.MkdirRequest) (*filesync.FileMetadata, error) {
+	utils.Log_trace("Received Mkdir Request")
+	if dir_meta == nil {
+		return nil, errors.New("nil dir_meta")
+	}
+	folder := filepath.Join(db.DB_FILES_DIR, dir_meta.Folder)
+	err := os.Mkdir(folder, 0755)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.Db_conn.Beginx()
+	if err != nil {
+		return nil, err
+	}
+	err = db.InsertFolder(tx, dir_meta.Folder)
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+	db_dir_meta, err := db.QueryFolder(s.Db_conn, dir_meta.Folder)
+	if err != nil {
+		return nil, err
+	}
+	return DbFileMetadataToFilesyncFileMetadata(db_dir_meta), nil
 }

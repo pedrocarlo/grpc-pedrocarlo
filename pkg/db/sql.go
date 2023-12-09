@@ -73,8 +73,9 @@ func ConnectDb() (*sqlx.DB, error) {
 // Insert or replace creates a new file id for row
 // Does not commit transaction
 func InsertFile(tx *sqlx.Tx, file_meta *FileMetadata) error {
+	fmt.Printf("file_meta: %v\n", file_meta)
 	_, err := tx.NamedExec("INSERT OR IGNORE INTO files_metadata (folder, file_name, file_hash, timestamp) VALUES (:folder, :file_name, :file_hash, :timestamp)", file_meta)
-	_, err = tx.Exec("UPDATE files_metadata folder=:folder, file_name=:file_name, file_hash=:file_hash, timestamp=:timestamp WHERE folder=:folder AND file_name=:file_name", file_meta)
+	_, err = tx.NamedExec("UPDATE files_metadata SET folder=:folder, file_name=:file_name, file_hash=:file_hash, timestamp=:timestamp WHERE folder=:folder AND file_name=:file_name", file_meta)
 	return err
 }
 

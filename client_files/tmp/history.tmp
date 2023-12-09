@@ -22,3 +22,15 @@ upload test2.txt
 upload test2.txt ./pasta
 ls .
 upload test2.txt ./pasta
+ls
+ls .
+upload test2.txt ./pasta
+ls
+ls .
+ls
+mkdir ./pasta
+upload test2.txt ./pasta
+mkdir ./pasta
+upload test2.txt ./pasta
+download test2.txt ./pasta
+upload contra_minuta.docx ./pasta

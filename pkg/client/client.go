@@ -200,3 +200,11 @@ func (c *FileClient) UploadFile(file *os.File, folder string) error {
 	}
 	return nil
 }
+
+func (c *FileClient) Mkdir(folder string) (*filesync.FileMetadata, error) {
+	return c.client.MkDir(
+		context.Background(),
+		&filesync.MkdirRequest{Folder: folder},
+	)
+
+}
