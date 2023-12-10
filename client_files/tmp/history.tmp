@@ -34,3 +34,39 @@ mkdir ./pasta
 upload test2.txt ./pasta
 download test2.txt ./pasta
 upload contra_minuta.docx ./pasta
+ls
+ls ..
+ls .
+mkdir pasta
+mkdir pasta/test
+rmdir
+rmdir pasta/test
+rmdir pasta/test/te
+rmdir pasta/test
+mkdir pasta/test
+upload test3.txt
+upload test3.txt pasta/test
+rmdir pasta/test
+ls
+ls ./
+ls test.txt 
+ls .
+ls 
+ls .
+ls
+ls .
+upload test.txt 
+upload test.txt /
+ls .
+ls test.txt 
+mkdir pasta
+ls .
+ls
+ls pasta/ 
+ls .
+ls pasta/ 
+ls .
+ls pasta/ 
+upload test.txt /pasta
+ls pasta/ 
+ls /

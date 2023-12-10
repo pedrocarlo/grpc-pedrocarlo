@@ -3,14 +3,18 @@ package file;
 
 option go_package = "./filesync";
 
-message FileListRequest { string folder = 1; }
+message FileListRequest {
+  string parent_folder = 1;
+  string folder_name = 2;
+}
 
 message FileMetadata {
   int32 id = 1; // First id
-  string folder = 2;
-  string filename = 3;
-  string filehash = 4; // Second id
-  int32 timestamp = 5;
+  bool is_dir = 2;
+  string folder = 3;
+  string filename = 4;
+  string filehash = 5;
+  int32 timestamp = 6;
 }
 
 message FileBytesMessage {
@@ -28,6 +32,17 @@ message FileResponse {
   bool done = 3;
 }
 
+message RemoveFileRequest {
+  string folder = 1;
+  string filename = 2;
+}
+
+message RemoveFileResponse {}
+
+message RemoveDirRequest { string folder = 1; }
+
+message RemoveDirResponse {}
+
 message MkdirRequest { string folder = 1; }
 
 service FileSync {
@@ -35,4 +50,6 @@ service FileSync {
   rpc FileDownload(FileMetadata) returns (stream FileBytesMessage) {}
   rpc FileUpload(stream FileBytesMessage) returns (FileMetadata) {}
   rpc MkDir(MkdirRequest) returns (FileMetadata) {}
+  rpc RemoveFile(RemoveFileRequest) returns (RemoveFileResponse) {}
+  rpc RemoveDir(RemoveDirRequest) returns (RemoveDirResponse) {}
 }

@@ -23,9 +23,9 @@ type CommandMap struct {
 	completer *readline.PrefixCompleter
 }
 
-func usage(w io.Writer) {
+func usage(commandMap *CommandMap, w io.Writer) {
 	io.WriteString(w, "commands:\n")
-	io.WriteString(w, completer.Tree("    "))
+	io.WriteString(w, commandMap.completer.Tree("    "))
 }
 
 var completer = readline.NewPrefixCompleter(
@@ -38,65 +38,17 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("sleep"),
 )
 
-// ****************** REPL FUNCTIONS **************************
-// See these for an example of how to get a REPL with history
-// like in the IP/TCP reference
-// This REPL relies on a go module for "readline".  To add it to your project,
-// run:  "github.com/chzyer/readline"
-func Repl(c *client.FileClient) {
-	commandMap := initializeCommands()
-	l := ReplInitialize(commandMap)
-	defer l.Close()
-	for {
-		line, done := ReplGetLine(l)
-		if done {
-			break
-		}
-		args := strings.Split(line, " ")
-		name := args[0]
-		if line == "" {
-			usage(os.Stdout)
-		} else {
-			command, ok := commandMap.commands[name]
-			if ok {
-				command.f(c, args[1:])
-			} else {
-				fmt.Printf("Command '%s' not found\n", args[0])
-			}
-		}
-
+func (commandMap *CommandMap) buildCompleter(c *client.FileClient) {
+	completer := readline.PrefixCompleter{}
+	children := make([]readline.PrefixCompleterInterface, 0)
+	listCwd := func(string) []string {
+		return listFiles(c, []string{"."})
 	}
-}
-
-// Initialize the repl
-func ReplInitialize(commandMap *CommandMap) *readline.Instance {
-	l, err := readline.NewEx(&readline.Config{
-		Prompt:            "> ",
-		HistoryFile:       "./client_files/tmp/history.tmp",
-		InterruptPrompt:   "^C",
-		HistorySearchFold: true,
-		AutoComplete:      completer,
-	})
-	if err != nil {
-		panic(err)
+	for name := range commandMap.commands {
+		children = append(children, readline.PcItem(name, readline.PcItemDynamic(listCwd)))
 	}
-	return l
-}
-
-// Get a line from the repl
-// To keep the example clean, we abstract this into a helper.
-// For better error handling, you may just want to do this in the loop that reads a line
-func ReplGetLine(repl *readline.Instance) (string, bool) {
-	line, err := repl.Readline()
-	if err == readline.ErrInterrupt {
-		return "", true
-	} else if err == io.EOF {
-		return "", true
-	}
-
-	line = strings.TrimSpace(line)
-
-	return line, false
+	completer.SetChildren(children)
+	commandMap.completer = &completer
 }
 
 func initializeCommands() *CommandMap {
@@ -123,7 +75,79 @@ func initializeCommands() *CommandMap {
 		name: "mkdir",
 		desc: "Make remote directory",
 	}
+	commands["rm"] = Command{
+		f:    RemoveFile,
+		name: "rm",
+		desc: "Remove file from server",
+	}
+	commands["rmdir"] = Command{
+		f:    RemoveDir,
+		name: "rmdir",
+		desc: "Remove empty dir from server",
+	}
 	return commandMap
+}
+
+// ****************** REPL FUNCTIONS **************************
+// See these for an example of how to get a REPL with history
+// like in the IP/TCP reference
+// This REPL relies on a go module for "readline".  To add it to your project,
+// run:  "github.com/chzyer/readline"
+func Repl(c *client.FileClient) {
+	commandMap := initializeCommands()
+	commandMap.buildCompleter(c)
+	l := ReplInitialize(commandMap)
+	defer l.Close()
+	for {
+		line, done := ReplGetLine(l)
+		if done {
+			break
+		}
+		args := strings.Split(line, " ")
+		name := args[0]
+		if line == "" {
+			usage(commandMap, os.Stdout)
+		} else {
+			command, ok := commandMap.commands[name]
+			if ok {
+				command.f(c, args[1:])
+			} else {
+				fmt.Printf("Command '%s' not found\n", args[0])
+			}
+		}
+
+	}
+}
+
+// Initialize the repl
+func ReplInitialize(commandMap *CommandMap) *readline.Instance {
+	l, err := readline.NewEx(&readline.Config{
+		Prompt:            "> ",
+		HistoryFile:       "./client_files/tmp/history.tmp",
+		InterruptPrompt:   "^C",
+		HistorySearchFold: true,
+		AutoComplete:      commandMap.completer,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return l
+}
+
+// Get a line from the repl
+// To keep the example clean, we abstract this into a helper.
+// For better error handling, you may just want to do this in the loop that reads a line
+func ReplGetLine(repl *readline.Instance) (string, bool) {
+	line, err := repl.Readline()
+	if err == readline.ErrInterrupt {
+		return "", true
+	} else if err == io.EOF {
+		return "", true
+	}
+
+	line = strings.TrimSpace(line)
+
+	return line, false
 }
 
 func UploadFile(c *client.FileClient, args []string) {
@@ -212,25 +236,33 @@ func translateFolderClient(c *client.FileClient, folder string) string {
 	return folder
 }
 
-func ListFiles(c *client.FileClient, args []string) {
+func listFiles(c *client.FileClient, args []string) []string {
+	out := make([]string, 0)
 	if len(args) < 1 {
 		fmt.Println("usage: ls <remote_folder>")
-		return
+		return out
 	}
 	folder := translateFolderClient(c, args[0])
 	files, err := c.GetFileList(folder)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return out
 	}
-	out_str := ""
 	for _, file := range files {
-		if file.Filename == "" {
-			base := filepath.Base(file.Folder)
-			out_str += fmt.Sprintf("%10s/", base)
+		if file.IsDir {
+			out = append(out, file.Filename+"/")
 		} else {
-			out_str += fmt.Sprintf("%10s", file.Filename)
+			out = append(out, file.Filename)
 		}
+	}
+	return out
+}
+
+func ListFiles(c *client.FileClient, args []string) {
+	out := listFiles(c, args)
+	out_str := ""
+	for _, name := range out {
+		out_str += fmt.Sprintf("%10s", name)
 	}
 	fmt.Printf("%s\n", out_str)
 }
@@ -242,6 +274,32 @@ func Mkdir(c *client.FileClient, args []string) {
 	}
 	folder := translateFolderClient(c, args[0])
 	_, err := c.Mkdir(folder)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func RemoveFile(c *client.FileClient, args []string) {
+	if len(args) < 2 {
+		fmt.Println("usage: rm <remote_filename> <remote_folder>")
+		return
+	}
+	filename, folder := args[0], translateFolderClient(c, args[1])
+	err := c.RemoveFile(folder, filename)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func RemoveDir(c *client.FileClient, args []string) {
+	if len(args) < 1 {
+		fmt.Println("usage: rmdir <remote_folder>")
+		return
+	}
+	folder := translateFolderClient(c, args[0])
+	err := c.RemoveDir(folder)
 	if err != nil {
 		fmt.Println(err)
 		return

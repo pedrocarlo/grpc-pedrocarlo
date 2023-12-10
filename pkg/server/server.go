@@ -28,8 +28,13 @@ type FileSyncServer struct {
 }
 
 func FileSyncFileMetadataToDbFileMetadata(request *filesync.FileMetadata) *db.FileMetadata {
+	is_dir := 0
+	if request.IsDir {
+		is_dir = 1
+	}
 	return &db.FileMetadata{
 		Id:        int(request.Id),
+		Is_dir:    is_dir,
 		Folder:    request.Folder,
 		Filename:  request.Filename,
 		Filehash:  request.Filehash,
@@ -38,8 +43,13 @@ func FileSyncFileMetadataToDbFileMetadata(request *filesync.FileMetadata) *db.Fi
 }
 
 func DbFileMetadataToFilesyncFileMetadata(query *db.FileMetadata) *filesync.FileMetadata {
+	is_dir := false
+	if query.Is_dir == 1 {
+		is_dir = true
+	}
 	return &filesync.FileMetadata{
 		Id:        int32(query.Id),
+		IsDir:     is_dir,
 		Folder:    query.Folder,
 		Filename:  query.Filename,
 		Filehash:  query.Filehash,
@@ -120,12 +130,14 @@ func translateFolder(folder_path string) string {
 func (s *FileSyncServer) FileList(ctx context.Context, request *filesync.FileListRequest) (*filesync.FileListResponse, error) {
 	utils.Log_trace("Received File List request")
 	tmp := make([]*filesync.FileMetadata, 0)
-	request.Folder = translateFolder(request.Folder)
-	_, err := db.QueryFolder(s.Db_conn, request.Folder)
+	// Not sanitizing or cleaning request.FolderName
+	// Assuming for now it is good
+	request.ParentFolder = translateFolder(request.ParentFolder)
+	_, err := db.QueryFolder(s.Db_conn, request.ParentFolder, request.FolderName)
 	if err != nil {
 		return nil, err
 	}
-	files, err := db.QueryFilesFolder(s.Db_conn, request.Folder)
+	files, err := db.QueryFilesFolder(s.Db_conn, request.ParentFolder, request.FolderName)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +169,7 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 		}
 		res.Folder = translateFolder(res.Folder)
 		// Check if folder exists
-		_, err := db.QueryFolder(s.Db_conn, res.Folder)
+		_, err := db.QueryFolder(s.Db_conn, filepath.Dir(res.Folder), filepath.Base(res.Folder))
 		if err != nil {
 			return err
 		}
@@ -184,6 +196,7 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 	utils.Log_trace("Beginning Db Transaction")
 	tx, err := s.Db_conn.Beginx()
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	utils.Log_trace("Inserting File to Db")
@@ -194,30 +207,19 @@ func (s *FileSyncServer) FileUpload(stream filesync.FileSync_FileUploadServer) e
 		Timestamp: int(time.Now().Unix()),
 	})
 	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	utils.Log_trace(fmt.Sprintf("Moving %s to %s", path, new_path))
+	err = os.Rename(path, new_path)
+	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	utils.Log_trace("Commiting changes to Db")
 	err = tx.Commit()
 	if err != nil {
-		return err
-	}
-	// err = os.MkdirAll(res.Folder, os.ModeDir)
-	// if err != nil {
-	// 	return err
-	// }
-	// // Insert folders into database
-	// folders := filepath.SplitList(res.Folder)
-	// curr_folder := ""
-	// for _, fold := range folders {
-	// 	err = db.InsertFolder(tx, curr_folder)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	curr_folder = filepath.Join(curr_folder, fold)
-	// }
-	utils.Log_trace(fmt.Sprintf("Moving %s to %s", path, new_path))
-	err = os.Rename(path, new_path)
-	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	utils.Log_trace(fmt.Sprintf("Finished download of file %s", res.Filename))
@@ -229,23 +231,75 @@ func (s *FileSyncServer) MkDir(ctx context.Context, dir_meta *filesync.MkdirRequ
 	if dir_meta == nil {
 		return nil, errors.New("nil dir_meta")
 	}
-	folder := filepath.Join(db.DB_FILES_DIR, dir_meta.Folder)
-	err := os.Mkdir(folder, 0755)
+	dir_meta.Folder = translateFolder(dir_meta.Folder)
+	tx, err := s.Db_conn.Beginx()
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	err = db.InsertFolder(tx, dir_meta.Folder)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	tx.Commit()
+	db_dir_meta, err := db.QueryFolder(s.Db_conn, filepath.Dir(dir_meta.Folder), filepath.Base(dir_meta.Folder))
 	if err != nil {
 		return nil, err
+	}
+	folder := filepath.Join(db.DB_FILES_DIR, dir_meta.Folder)
+	err = os.Mkdir(folder, 0755)
+	if err != nil {
+		return nil, err
+	}
+	return DbFileMetadataToFilesyncFileMetadata(db_dir_meta), nil
+}
+
+func (s *FileSyncServer) RemoveFile(ctx context.Context, request *filesync.RemoveFileRequest) (*filesync.RemoveFileResponse, error) {
+	if request == nil {
+		return nil, errors.New("request is nil")
 	}
 	tx, err := s.Db_conn.Beginx()
 	if err != nil {
 		return nil, err
 	}
-	err = db.InsertFolder(tx, dir_meta.Folder)
+	err = db.RemoveFile(s.Db_conn, tx, request.Folder, request.Filename)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(db.DB_FILES_DIR, request.Folder, request.Filename)
+	err = os.Remove(path)
 	if err != nil {
 		return nil, err
 	}
 	tx.Commit()
-	db_dir_meta, err := db.QueryFolder(s.Db_conn, dir_meta.Folder)
+	return &filesync.RemoveFileResponse{}, nil
+}
+
+func (s *FileSyncServer) RemoveDir(ctx context.Context, request *filesync.RemoveDirRequest) (*filesync.RemoveDirResponse, error) {
+	if request == nil {
+		return nil, errors.New("request is nil")
+	}
+	request.Folder = translateFolder(request.Folder)
+	if request.Folder == db.ROOT_FOLDER {
+		return nil, errors.New("cannot remove root folder")
+	}
+	tx, err := s.Db_conn.Beginx()
 	if err != nil {
+		tx.Rollback()
 		return nil, err
 	}
-	return DbFileMetadataToFilesyncFileMetadata(db_dir_meta), nil
+	err = db.RemoveFolder(s.Db_conn, tx, request.Folder)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	path := filepath.Join(db.DB_FILES_DIR, request.Folder)
+	err = os.Remove(path)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	tx.Commit()
+	return &filesync.RemoveDirResponse{}, nil
 }

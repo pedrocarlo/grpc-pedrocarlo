@@ -66,7 +66,16 @@ func (c *FileClient) CloseClient() {
 
 func (c *FileClient) GetFileList(folder string) ([]*filesync.FileMetadata, error) {
 	// Change this to implement deadlines and other things
-	m, err := c.client.FileList(context.Background(), &filesync.FileListRequest{Folder: folder})
+	folder_name := filepath.Base(folder)
+	if folder_name == "/" {
+		folder_name = ""
+	}
+	m, err := c.client.FileList(
+		context.Background(),
+		&filesync.FileListRequest{
+			ParentFolder: filepath.Dir(folder),
+			FolderName:   folder_name,
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -206,5 +215,18 @@ func (c *FileClient) Mkdir(folder string) (*filesync.FileMetadata, error) {
 		context.Background(),
 		&filesync.MkdirRequest{Folder: folder},
 	)
+}
 
+func (c *FileClient) RemoveFile(folder string, filename string) error {
+	_, err := c.client.RemoveFile(
+		context.Background(),
+		&filesync.RemoveFileRequest{Folder: folder, Filename: filename})
+	return err
+}
+
+func (c *FileClient) RemoveDir(folder string) error {
+	_, err := c.client.RemoveDir(
+		context.Background(),
+		&filesync.RemoveDirRequest{Folder: folder})
+	return err
 }

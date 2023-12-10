@@ -26,6 +26,8 @@ type FileSyncClient interface {
 	FileDownload(ctx context.Context, in *FileMetadata, opts ...grpc.CallOption) (FileSync_FileDownloadClient, error)
 	FileUpload(ctx context.Context, opts ...grpc.CallOption) (FileSync_FileUploadClient, error)
 	MkDir(ctx context.Context, in *MkdirRequest, opts ...grpc.CallOption) (*FileMetadata, error)
+	RemoveFile(ctx context.Context, in *RemoveFileRequest, opts ...grpc.CallOption) (*RemoveFileResponse, error)
+	RemoveDir(ctx context.Context, in *RemoveDirRequest, opts ...grpc.CallOption) (*RemoveDirResponse, error)
 }
 
 type fileSyncClient struct {
@@ -120,6 +122,24 @@ func (c *fileSyncClient) MkDir(ctx context.Context, in *MkdirRequest, opts ...gr
 	return out, nil
 }
 
+func (c *fileSyncClient) RemoveFile(ctx context.Context, in *RemoveFileRequest, opts ...grpc.CallOption) (*RemoveFileResponse, error) {
+	out := new(RemoveFileResponse)
+	err := c.cc.Invoke(ctx, "/file.FileSync/RemoveFile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fileSyncClient) RemoveDir(ctx context.Context, in *RemoveDirRequest, opts ...grpc.CallOption) (*RemoveDirResponse, error) {
+	out := new(RemoveDirResponse)
+	err := c.cc.Invoke(ctx, "/file.FileSync/RemoveDir", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FileSyncServer is the server API for FileSync service.
 // All implementations must embed UnimplementedFileSyncServer
 // for forward compatibility
@@ -128,6 +148,8 @@ type FileSyncServer interface {
 	FileDownload(*FileMetadata, FileSync_FileDownloadServer) error
 	FileUpload(FileSync_FileUploadServer) error
 	MkDir(context.Context, *MkdirRequest) (*FileMetadata, error)
+	RemoveFile(context.Context, *RemoveFileRequest) (*RemoveFileResponse, error)
+	RemoveDir(context.Context, *RemoveDirRequest) (*RemoveDirResponse, error)
 	mustEmbedUnimplementedFileSyncServer()
 }
 
@@ -146,6 +168,12 @@ func (UnimplementedFileSyncServer) FileUpload(FileSync_FileUploadServer) error {
 }
 func (UnimplementedFileSyncServer) MkDir(context.Context, *MkdirRequest) (*FileMetadata, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MkDir not implemented")
+}
+func (UnimplementedFileSyncServer) RemoveFile(context.Context, *RemoveFileRequest) (*RemoveFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveFile not implemented")
+}
+func (UnimplementedFileSyncServer) RemoveDir(context.Context, *RemoveDirRequest) (*RemoveDirResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveDir not implemented")
 }
 func (UnimplementedFileSyncServer) mustEmbedUnimplementedFileSyncServer() {}
 
@@ -243,6 +271,42 @@ func _FileSync_MkDir_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FileSync_RemoveFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileSyncServer).RemoveFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/file.FileSync/RemoveFile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileSyncServer).RemoveFile(ctx, req.(*RemoveFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FileSync_RemoveDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileSyncServer).RemoveDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/file.FileSync/RemoveDir",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileSyncServer).RemoveDir(ctx, req.(*RemoveDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FileSync_ServiceDesc is the grpc.ServiceDesc for FileSync service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -257,6 +321,14 @@ var FileSync_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MkDir",
 			Handler:    _FileSync_MkDir_Handler,
+		},
+		{
+			MethodName: "RemoveFile",
+			Handler:    _FileSync_RemoveFile_Handler,
+		},
+		{
+			MethodName: "RemoveDir",
+			Handler:    _FileSync_RemoveDir_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
