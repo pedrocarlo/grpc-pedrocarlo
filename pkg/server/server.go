@@ -118,12 +118,13 @@ func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream fil
 }
 
 func translateFolder(folder_path string) string {
-	split_path := filepath.SplitList(filepath.Join(folder_path, ""))
-	res := filepath.Join(split_path...)
-	if res == "." {
-		res = "/"
-	}
-	return res
+	// split_path := strings.Split(folder_path, string(os.PathSeparator))
+	// res := filepath.Join(split_path...)
+	// if res == "." || res == "" {
+	// 	res = "/"
+	// }
+	utils.Log_trace(folder_path)
+	return folder_path
 }
 
 // FileList implements filesync.FileSyncServer.

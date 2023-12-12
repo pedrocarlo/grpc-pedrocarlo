@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"grpc-pedrocarlo/pkg/client"
 	filesync "grpc-pedrocarlo/pkg/file"
+	"grpc-pedrocarlo/pkg/utils"
 	"io"
 	"os"
 	"path/filepath"
@@ -85,6 +86,11 @@ func initializeCommands() *CommandMap {
 		name: "rmdir",
 		desc: "Remove empty dir from server",
 	}
+	commands["cd"] = Command{
+		f:    ChangeDir,
+		name: "cd",
+		desc: "Change directory",
+	}
 	return commandMap
 }
 
@@ -96,6 +102,8 @@ func initializeCommands() *CommandMap {
 func Repl(c *client.FileClient) {
 	commandMap := initializeCommands()
 	commandMap.buildCompleter(c)
+	ChangeDir(c, []string{"/"})
+
 	l := ReplInitialize(commandMap)
 	defer l.Close()
 	for {
@@ -215,23 +223,31 @@ func DownloadFile(c *client.FileClient, args []string) {
 }
 
 func translateFolderClient(c *client.FileClient, folder string) string {
-	split_path := filepath.SplitList(filepath.Join(folder, ""))
+	// TODO CHANGE SPLITLIST
+	split_path := strings.Split(folder, string(os.PathSeparator))
 	if len(split_path) > 0 {
 		if split_path[0] == "." {
 			split_path[0] = c.Curr_dir
 		} else if split_path[0] == ".." {
 			split_path[0] = filepath.Dir(c.Curr_dir)
-		} else {
-			split_path[0] = c.Curr_dir + split_path[0]
+		} else if split_path[0] == "" {
+			split_path[0] = "/"
 		}
+		// else {
+		// 	split_path[0] = c.Curr_dir + split_path[0]
+		// }
 	}
 	folder = filepath.Join(split_path...)
 	if folder == "." {
 		folder = c.Curr_dir
-	}
-	//
-	if folder == ".." {
-		folder = c.Curr_dir
+	} else if folder == ".." {
+		if filepath.Dir(folder) == "." {
+			folder = c.Curr_dir
+		} else {
+			folder = filepath.Dir(folder)
+		}
+	} else if !strings.HasPrefix(folder, "/") {
+		folder = c.Curr_dir + folder
 	}
 	return folder
 }
@@ -273,6 +289,7 @@ func Mkdir(c *client.FileClient, args []string) {
 		return
 	}
 	folder := translateFolderClient(c, args[0])
+	utils.Log_trace(folder)
 	_, err := c.Mkdir(folder)
 	if err != nil {
 		fmt.Println(err)
@@ -304,4 +321,41 @@ func RemoveDir(c *client.FileClient, args []string) {
 		fmt.Println(err)
 		return
 	}
+}
+
+// Tab autocomplete only completes for current folder at the moment
+func ChangeDir(c *client.FileClient, args []string) {
+	if len(args) < 1 {
+		fmt.Println("usage: cd <remote_folder>")
+		return
+	}
+	folder := translateFolderClient(c, args[0])
+	// Query its parent folder, to see if it either errors or if it is inside
+	out, err := c.GetFileList(filepath.Dir(folder))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if folder == "/" {
+		c.Curr_dir = folder
+		return
+	}
+	for _, file := range out {
+		if file.IsDir && filepath.Join(file.Folder, file.Filename) == folder {
+			// Attempt at Update cache
+			files, err := c.GetFileList(folder)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			c.Curr_dir = folder
+			c.Curr_dir_files = make(map[string]*filesync.FileMetadata)
+			for _, file := range files {
+				c.Curr_dir_files[file.Filename] = file
+			}
+			// TODO Restart Cache Timer
+			return
+		}
+	}
+	fmt.Println(fmt.Errorf("folder not found"))
 }

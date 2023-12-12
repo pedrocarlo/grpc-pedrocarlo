@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const CLIENT_BASE_DIR = "client_files"
@@ -33,7 +34,7 @@ type FileClient struct {
 
 func Connect() (*grpc.ClientConn, error) {
 	// Understand these options
-	return grpc.Dial("127.0.0.1:7070", []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}...)
+	return grpc.Dial("127.0.0.1:7070", []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}...)
 }
 
 func CreateClient() (*FileClient, error) {
@@ -46,14 +47,14 @@ func CreateClient() (*FileClient, error) {
 		conn:     conn,
 		Curr_dir: "/",
 	}
-	files, err := c.GetFileList(c.Curr_dir)
-	if err != nil {
-		return nil, err
-	}
-	c.Curr_dir_files = make(map[string]*filesync.FileMetadata)
-	for _, file := range files {
-		c.Curr_dir_files[file.Filename] = file
-	}
+	// files, err := c.GetFileList(c.Curr_dir)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// c.Curr_dir_files = make(map[string]*filesync.FileMetadata)
+	// for _, file := range files {
+	// 	c.Curr_dir_files[file.Filename] = file
+	// }
 	return c, nil
 }
 

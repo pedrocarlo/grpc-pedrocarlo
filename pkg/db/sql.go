@@ -106,8 +106,6 @@ func QueryFile(db *sqlx.DB, folder string, filename string) ([]FileMetadata, err
 
 func QueryFolder(db *sqlx.DB, parent_folder string, folder_name string) (*FileMetadata, error) {
 	var result FileMetadata
-	println(parent_folder)
-	println(folder_name)
 	err := db.Get(&result, "SELECT * FROM files_metadata WHERE is_dir=1 AND folder=$1 and file_name=$2 ORDER BY timestamp DESC", filepath.Dir(parent_folder), folder_name)
 	if err != nil {
 		err = errFolderNotFound
