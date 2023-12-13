@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -21,9 +20,7 @@ import (
 var errHashDifferent = errors.New("files hashes are not the same")
 
 type FileSyncServer struct {
-	// TODO why unimplemented?
 	filesync.UnimplementedFileSyncServer
-	users   sync.Map
 	Db_conn *sqlx.DB
 }
 
@@ -118,11 +115,6 @@ func (s *FileSyncServer) FileDownload(request *filesync.FileMetadata, stream fil
 }
 
 func translateFolder(folder_path string) string {
-	// split_path := strings.Split(folder_path, string(os.PathSeparator))
-	// res := filepath.Join(split_path...)
-	// if res == "." || res == "" {
-	// 	res = "/"
-	// }
 	utils.Log_trace(folder_path)
 	return folder_path
 }

@@ -11,11 +11,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// const BASE_DIR = "server_files"
-
-// var TEMP_DIR = filepath.Join(BASE_DIR, "tmp")
-// var DB_FILES_DIR = filepath.Join(BASE_DIR, "files")
-
 func main() {
 	ln, err := net.Listen("tcp", "127.0.0.1:7070")
 	if err != nil {

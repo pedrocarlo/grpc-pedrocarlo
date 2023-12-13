@@ -1,4 +1,8 @@
-client_files/*
+client_files/downloads/*
+client_files/tmp/*
 server_files/files.db
-server_files/files
-server_files/tmp
+server_files/files/*
+server_files/tmp/*
+./test.*
+./server
+./client

@@ -29,16 +29,6 @@ func usage(commandMap *CommandMap, w io.Writer) {
 	io.WriteString(w, commandMap.completer.Tree("    "))
 }
 
-var completer = readline.NewPrefixCompleter(
-	readline.PcItem("mode"),
-	readline.PcItem("login"),
-	readline.PcItem("setprompt"),
-	readline.PcItem("setpassword"),
-	readline.PcItem("bye"),
-	readline.PcItem("help"),
-	readline.PcItem("sleep"),
-)
-
 func (commandMap *CommandMap) buildCompleter(c *client.FileClient) {
 	completer := readline.PrefixCompleter{}
 	children := make([]readline.PrefixCompleterInterface, 0)
@@ -223,7 +213,6 @@ func DownloadFile(c *client.FileClient, args []string) {
 }
 
 func translateFolderClient(c *client.FileClient, folder string) string {
-	// TODO CHANGE SPLITLIST
 	split_path := strings.Split(folder, string(os.PathSeparator))
 	if len(split_path) > 0 {
 		if split_path[0] == "." {
@@ -233,9 +222,6 @@ func translateFolderClient(c *client.FileClient, folder string) string {
 		} else if split_path[0] == "" {
 			split_path[0] = "/"
 		}
-		// else {
-		// 	split_path[0] = c.Curr_dir + split_path[0]
-		// }
 	}
 	folder = filepath.Join(split_path...)
 	if folder == "." {
